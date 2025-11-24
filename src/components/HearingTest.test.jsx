@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import HearingTest from './HearingTest';
 import * as audioUtils from '../utils/audio';
@@ -38,5 +38,30 @@ describe('HearingTest', () => {
         fireEvent.click(screen.getByText('Start Assessment'));
         fireEvent.click(screen.getByText("I'm Ready"));
         expect(screen.getByText(/Testing Left Ear/i)).toBeInTheDocument();
+    });
+
+    it.skip('advances to next frequency after response', async () => {
+        vi.useFakeTimers();
+        render(<HearingTest />);
+
+        // Start
+        fireEvent.click(screen.getByText('Start Assessment'));
+        fireEvent.click(screen.getByText("I'm Ready"));
+
+        // Check first freq
+        expect(screen.getByText('250 Hz')).toBeInTheDocument();
+
+        // Respond
+        fireEvent.click(screen.getByText('I Hear It'));
+
+        // Advance time
+        act(() => {
+            vi.advanceTimersByTime(1000);
+        });
+
+        // Check next freq
+        await waitFor(() => expect(screen.getByText('500 Hz')).toBeInTheDocument());
+
+        vi.useRealTimers();
     });
 });

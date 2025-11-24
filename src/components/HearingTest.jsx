@@ -7,7 +7,7 @@ const VOLUME_STEP = 0.05;
 const INITIAL_VOLUME = 0.0;
 
 export default function HearingTest() {
-    const [step, setStep] = useState('welcome'); // welcome, calibration, test, results
+    const [step, setStep] = useState('welcome'); // welcome, calibration, test, between_ears, results
     const [results, setResults] = useState({ left: {}, right: {} });
 
     const [currentEar, setCurrentEar] = useState('left');
@@ -16,6 +16,7 @@ export default function HearingTest() {
     const [isTestRunning, setIsTestRunning] = useState(false);
 
     const timerRef = useRef(null);
+    const lastPlayedVolumeRef = useRef(INITIAL_VOLUME);
 
     const startTest = () => {
         initAudio();
@@ -35,42 +36,43 @@ export default function HearingTest() {
         setCurrentEar(ear);
         setFreqIndex(fIndex);
         setCurrentVolume(INITIAL_VOLUME);
+        lastPlayedVolumeRef.current = INITIAL_VOLUME;
         setIsTestRunning(true);
     };
 
     useEffect(() => {
         if (step === 'test' && isTestRunning) {
-            const interval = setInterval(() => {
-                if (currentVolume >= MAX_VOLUME) {
-                    // Safety stop or auto-skip if too loud (shouldn't happen ideally)
-                    handleResponse(MAX_VOLUME);
-                    return;
-                }
+            if (currentVolume >= MAX_VOLUME) {
+                handleResponse();
+                return;
+            }
 
-                // Play tone
-                const pan = currentEar === 'left' ? -1 : 1;
-                playTone(FREQUENCIES[freqIndex], currentVolume, pan, 0.5);
+            // Play tone
+            const pan = currentEar === 'left' ? -1 : 1;
+            playTone(FREQUENCIES[freqIndex], currentVolume, pan, 0.5);
+            lastPlayedVolumeRef.current = currentVolume;
 
-                // Increase volume for next pulse
+            // Schedule next volume increase
+            timerRef.current = setTimeout(() => {
                 setCurrentVolume(v => Math.min(v + VOLUME_STEP, MAX_VOLUME));
+            }, 1500);
 
-            }, 1500); // Pulse every 1.5s
-
-            timerRef.current = interval;
-            return () => clearInterval(interval);
+            return () => clearTimeout(timerRef.current);
         }
     }, [step, isTestRunning, currentVolume, freqIndex, currentEar]);
 
     const handleResponse = () => {
-        clearInterval(timerRef.current);
+        clearTimeout(timerRef.current);
         setIsTestRunning(false);
 
-        // Record result
+        // Record result using the volume that was actually played
+        const recordedVolume = lastPlayedVolumeRef.current;
+
         setResults(prev => ({
             ...prev,
             [currentEar]: {
                 ...prev[currentEar],
-                [FREQUENCIES[freqIndex]]: currentVolume
+                [FREQUENCIES[freqIndex]]: recordedVolume
             }
         }));
 
@@ -80,11 +82,16 @@ export default function HearingTest() {
             setTimeout(() => startFrequencyTest(currentEar, freqIndex + 1), 1000);
         } else if (currentEar === 'left') {
             // Switch to right ear
-            setTimeout(() => startFrequencyTest('right', 0), 1000);
+            setStep('between_ears');
         } else {
             // Finish
             setStep('results');
         }
+    };
+
+    const startRightEar = () => {
+        setStep('test');
+        startFrequencyTest('right', 0);
     };
 
     const reset = () => {
@@ -113,6 +120,15 @@ export default function HearingTest() {
                     <p>Press the button below to play a sample tone.</p>
                     <button onClick={startCalibration} style={{ marginRight: '1rem' }}>Play Sample Tone</button>
                     <button onClick={confirmCalibration} className="primary">I'm Ready</button>
+                </div>
+            )}
+
+            {step === 'between_ears' && (
+                <div className="card fade-in">
+                    <h2>Left Ear Complete</h2>
+                    <p>Great job! Now we will test your right ear.</p>
+                    <p>Please ensure your headphones are still comfortable.</p>
+                    <button onClick={startRightEar} className="primary">Start Right Ear Test</button>
                 </div>
             )}
 
